@@ -322,3 +322,67 @@ Feature: Component gallery behaviors
     And I wait for the page to be interactive
     And I run a program that prints two lines
     Then the console shows them on two lines
+
+  Scenario: A verb's docstring is its tooltip
+    A button says what it does on hover — the docstring's first line, read
+    off the model's own source, then the gate. The desk's four verbs lean
+    on it to say what each reads and writes (Michel, 2026-09-04).
+
+    When I navigate to "/components/examples/model"
+    And I wait for the page to be interactive
+    Then the "eat" verb on the "lucky_widget" inspector explains "Reads the bowl. Writes weight — and the mood turns fed. · → fed"
+    And the "bark" verb on the "lucky_widget" inspector explains "Reads nothing. Writes last_said and adopted — and celebrates. · needs: fed"
+
+  Scenario: The folder page's recap example folds a built folder into facts
+    The recap view also runs on a built site (manifest road, no key): the
+    component page's own example lists the examples folder.
+
+    When I navigate to "/components/folder"
+    And I wait for the page to be interactive
+    Then the recap head reads "pages done"
+    And the recap lists at least 3 pages
+
+  Scenario: A behaviour can celebrate on its own card
+    self.confetti() inside a model's method bursts on the inspector card
+    that shows the object — page Python, no js in the page (Michel,
+    2026-09-07: the cup says Congrats! with confetti).
+
+    When I navigate to "/components/examples/model"
+    And I wait for the page to be interactive
+    And I press "eat" on the "lucky_widget" inspector
+    And I press "bark" on the "lucky_widget" inspector
+    Then the "lucky_widget" inspector bursts with confetti
+
+  Scenario: The account menu hands out this page as a QR code, in any mode
+    Present mode had a share button (Q); the same QR is wanted from the
+    account menu on any page, any mode (Michel, 2026-09-07). One overlay,
+    two doors.
+
+    Given I have a clean browser page
+    And I am signed in with my face already cached
+    When I navigate to "/components/qr"
+    And I wait for the page to be interactive
+    And I choose "QR code of this page" in my account menu
+    Then the share overlay shows this page's address
+    When I press "Escape"
+    Then the share overlay is closed
+
+  Scenario: An accordion header wears the fold cue
+    A bar with no marker reads as a title, not a door: who could guess
+    "Markdown, in one page" unfolds? (Michel, 2026-09-07). Every header
+    wears ▸, and ▾ once open.
+
+    When I navigate to "/components/accordion"
+    And I wait for the page to be interactive
+    Then the closed accordion headers wear "▸"
+    When I open the first accordion section
+    Then the open accordion header wears "▾"
+
+  Scenario: A grid prints UTC stamps on the reader's clock, UTC on hover
+    The memory, the seat files and GitHub keep ISO-Z; a teacher in
+    Milwaukee read 01:43Z as the middle of the night (Michel, 2026-09-09).
+    The data stays UTC; the printing is local, one hover from the raw.
+
+    When I navigate to "/components/dataset"
+    And I wait for the page to be interactive
+    Then the grid "joins_grid" prints the stamp "2026-09-09T01:43:04Z" on the reader's clock, UTC on hover

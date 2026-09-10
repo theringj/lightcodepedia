@@ -439,8 +439,8 @@ Feature: Folder shelf — read posture and X-ray workbench
 
   Scenario: A module-scoped frame offers no way out
     A Canvas page framing ONE module must not hand the learner a door out of
-    it. ?up=0 takes the pill away, and the flag rides every hop inside
-    (Michel, 2026-08-13).
+    it. ?up=0 takes the pill away on the module's front page, and the flag
+    rides every hop inside (Michel, 2026-08-13).
 
     Given I have a clean browser page
     And a marked shim is preinstalled
@@ -457,3 +457,107 @@ Feature: Folder shelf — read posture and X-ray workbench
     And I wait for the page to be interactive
     Then the shelf shows a card for "Alpha"
     And no Up pill is offered
+
+  Scenario: A module recap counts quizzes and proofs, and links to what remains
+    Before a graded check, a learner juggling three classes and a job wants
+    one factual line per page: what they earned, what they missed, what is
+    left — and a link to finish it. Module-scoped, no prose, points =
+    quizzes ok + proofs green (Michel, 2026-09-06). The records arrive from
+    the bench's progress file, so a phone shows the laptop's work.
+
+    Given I have a clean browser page
+    And a marked shim is preinstalled
+    And a builder key is connected
+    And the module "courses/demo/mod" holds pages with quizzes and proofs:
+      | file         | title              | quizzes | proofs | tags             |
+      | 01_first.md  | 📝 The Volunteer   | 3       | 1      | markdown         |
+      | 02_second.md | 🔥 North Burns     | 3       | 4      | agent, prompt    |
+      | 03_third.md  | 🔌 The Broken Wire | 2       | 1      | chart, datagrid  |
+      | 04_fourth.md | 💎 The Essentials  | 3       | 2      | agent, lifecycle |
+    And the GitHub contents API serves "courses/demo/mod/_recap.md" with the document:
+      """
+      # Where you are
+
+      [this module](#)
+      {: .folder view="recap" }
+      """
+    When I navigate to "/run.html#src=gh:acme/demo/courses/demo/mod/_recap.md"
+    And I wait for the page to be interactive
+    Then the recap head reads "0 of 4 pages done · 🏆 0 of 19 points"
+    And the recap names the module "📦 01 · Outside-in"
+    And the recap cheers "Nothing yet. 19 points on four pages."
+    When the bench's records arrive:
+      | page               | won | answered | green |
+      | 📝 The Volunteer   | 3   | 3        | 1     |
+      | 🔥 North Burns     | 3   | 3        | 4     |
+      | 🔌 The Broken Wire | 1   | 2        | 1     |
+    Then the recap head reads "2 of 4 pages done · 🏆 13 of 19 points"
+    And the recap row "The Broken Wire" reads "chart, datagrid · quiz 1/2, 1 missed · proof 1/1" and offers "finish"
+    And the recap row "The Essentials" reads "quiz 0/3 · proofs 0/2" and offers "start"
+    And the recap row "The Volunteer" reads "quiz 3/3 · proof 1/1" and offers "open"
+    And the recap cheers "Two pages down. 6 points left on two pages."
+
+  Scenario: The teacher's shelf reads a vault the author key cannot
+    An author key is owner-scoped; the vault is the org's. The runner
+    already retries a page with the cockpit's org key, so the page rendered
+    — and the recap on it said HTTP 404 (Michel, 2026-09-07). The shelf
+    falls back the same way; learners hold no org key and are untouched.
+
+    Given I have a clean browser page
+    And a marked shim is preinstalled
+    And a builder key is connected
+    And the module "courses/demo/mod" holds pages with quizzes and proofs:
+      | file        | title            | quizzes | proofs | tags     |
+      | 01_first.md | 📝 The Volunteer | 3       | 1      | markdown |
+    And the GitHub contents API serves "courses/demo/mod/_recap.md" with the document:
+      """
+      # Where you are
+
+      [this module](#)
+      {: .folder view="recap" }
+      """
+    And the org key alone can read that module
+    When I navigate to "/run.html#src=gh:acme/demo/courses/demo/mod/_recap.md"
+    And I wait for the page to be interactive
+    Then the recap head reads "0 of 1 pages done · 🏆 0 of 4 points"
+
+  Scenario: The recap carries the key's age where the points are
+    Given I have a clean browser page
+    And a marked shim is preinstalled
+    And a builder key is connected
+    And my key was saved 27 days ago
+    And the module "courses/demo/mod" holds pages with quizzes and proofs:
+      | file        | title            | quizzes | proofs | tags     |
+      | 01_first.md | 📝 The Volunteer | 3       | 1      | markdown |
+    And the GitHub contents API serves "courses/demo/mod/_recap.md" with the document:
+      """
+      # Where you are
+
+      [this module](#)
+      {: .folder view="recap" }
+      """
+    When I navigate to "/run.html#src=gh:acme/demo/courses/demo/mod/_recap.md"
+    And I wait for the page to be interactive
+    Then the recap head reads "0 of 1 pages done"
+    And the recap key line says "Key saved 27 days ago"
+
+  Scenario: In a module-scoped frame, a lesson still climbs to the module's front page
+    Scoped means no way OUT of the module, not no way back to its index:
+    on the Essentials page of module 00, framed with ?up=0, there was no
+    way up to the module page the learner came from (Michel, 2026-09-07).
+
+    Given I have a clean browser page
+    And a marked shim is preinstalled
+    And a builder key is connected
+    And the folder "courses/demo/mod" serves pages "alpha.md"
+    And the GitHub contents API serves "courses/demo/mod/lesson.md" with the document:
+      """
+      # A lesson
+
+      [in this module](#)
+      {: .folder parent="true" }
+      """
+    When I navigate to "/run.html?up=0#src=gh:acme/demo/courses/demo/mod/lesson.md"
+    And I wait for the page to be interactive
+    Then the shelf shows a card for "Alpha"
+    And the way up leads to "courses/demo/mod/index.md"

@@ -648,3 +648,116 @@ def step_untitled_block_is_a_card(context):
              .filter(b => !b.closest('.lc-block-win'))
              .filter(b => b.querySelector('.lc-win-bar')).length""")
     assert bars == 0, "%d untitled block(s) grew a window bar" % bars
+
+
+# ── the inspector's verbs: engine steps, so every published page can use them
+# (they lived in the lab-only classroom4 steps and pedia's run had them undefined, 2026-09-04)
+@when('I press "{verb}" on the "{elid}" inspector')
+def step_press(context, verb, elid):
+    context.page.locator(
+        '[data-lc-inspector="%s"] [data-card] button[data-m="%s"]' % (elid, verb)).first.click()
+
+@then('the "{verb}" verb on the "{elid}" inspector is enabled')
+def step_verb_enabled(context, verb, elid):
+    btn = context.page.locator(
+        '[data-lc-inspector="%s"] [data-card] button[data-m="%s"]' % (elid, verb)).first
+    expect(btn).to_be_visible(timeout=45_000)
+    expect(btn).to_be_enabled(timeout=15_000)
+
+@then('the "{verb}" verb on the "{elid}" inspector explains "{tip}"')
+def step_verb_tip(context, verb, elid, tip):
+    btn = context.page.locator(
+        '[data-lc-inspector="%s"] [data-card] button[data-m="%s"]' % (elid, verb)).first
+    expect(btn).to_be_visible(timeout=45_000)
+    expect(btn).to_have_attribute("title", tip, timeout=15_000)
+
+@then('the "{verb}" verb on the "{elid}" inspector is disabled')
+def step_verb_disabled(context, verb, elid):
+    btn = context.page.locator(
+        '[data-lc-inspector="%s"] [data-card] button[data-m="%s"]' % (elid, verb)).first
+    expect(btn).to_be_visible(timeout=45_000)
+    expect(btn).to_be_disabled()
+
+
+@then('the "{elid}" inspector bursts with confetti')
+def step_inspector_confetti(context, elid):
+    # the burst lands on the card's parent (the card itself redraws after a verb)
+    context.page.wait_for_function(
+        "(id) => { const h = document.querySelector('[data-lc-inspector=\"' + id + '\"]');"
+        " return !!(h && h.parentElement && h.parentElement.querySelector('.lc-confetti, .lc-confetti-quiet')); }",
+        arg=elid, timeout=20_000)
+
+
+# ── the account menu's QR door ──────────────────────────────────────────────
+@when('I choose "{label}" in my account menu')
+def step_choose_in_account_menu(context, label):
+    btn = context.page.locator("#lc-user-btn")
+    expect(btn).to_be_visible(timeout=10_000)
+    btn.click()
+    context.page.wait_for_function(
+        "() => document.getElementById('lc-user-drop').classList.contains('open')", timeout=5_000)
+    context.page.locator("#lc-user-drop .lc-ud-row", has_text=label).first.click()
+
+
+@then("the share overlay shows this page's address")
+def step_share_overlay_shows(context):
+    overlay = context.page.locator(".lc-slides-share-overlay.lc-share-open")
+    expect(overlay).to_be_visible(timeout=10_000)
+    expect(overlay.locator(".lc-slides-share-url")).to_have_text(context.page.url)
+
+
+@then("the share overlay is closed")
+def step_share_overlay_closed(context):
+    expect(context.page.locator(".lc-slides-share-overlay.lc-share-open")).to_have_count(0, timeout=5_000)
+
+
+def _summary_cue(context, nth, state):
+    return context.page.evaluate(
+        """([n, st]) => { const d = document.querySelectorAll('.lc-accordion > details')[n];
+             if (!d) return 'no details';
+             if (st === 'open' && !d.open) return 'not open';
+             return getComputedStyle(d.querySelector('summary'), '::before').content; }""", [nth, state])
+
+
+@then('the closed accordion headers wear "{cue}"')
+def step_closed_cue(context, cue):
+    got = _summary_cue(context, 0, "closed")
+    assert cue in got, "closed header cue: %r" % got
+
+
+@then('the open accordion header wears "{cue}"')
+def step_open_cue(context, cue):
+    got = _summary_cue(context, 0, "open")
+    assert cue in got, "open header cue: %r" % got
+
+
+# ── UTC stamps on the reader's clock (Michel, 2026-09-09) ─────────────────
+LOCAL_STAMP = r"^[A-Z][a-z]{2} \d{1,2}(, \d{4})?, \d{1,2}:\d{2}\s?[AP]M$"
+
+
+def _expect_local(context, cell, utc=None):
+    """the cell prints the browser's own rendering of its title's UTC —
+    computed in the page, so the rig's timezone never matters"""
+    title = cell.get_attribute("title") or ""
+    assert title.endswith("Z") and "T" in title, "no UTC on hover: %r" % title
+    if utc:
+        assert title == utc, "hover should carry the raw UTC %s, got %s" % (utc, title)
+    want = context.page.evaluate("u => window.lcWhen(u).text", title)
+    text = cell.inner_text().replace(" 🔒", "").strip()
+    assert text == want, "printed %r, the reader's clock says %r" % (text, want)
+    assert re.match(LOCAL_STAMP, text.replace("\u202f", " ")), "not a local stamp: %r" % text
+
+
+@then('the grid "{grid_id}" prints the stamp "{utc}" on the reader\'s clock, UTC on hover')
+def step_grid_local_stamp(context, grid_id, utc):
+    cell = context.page.locator(".lc-datagrid[data-lc-id='" + grid_id + "'] td[title='" + utc + "']")
+    expect(cell).to_have_count(1, timeout=15_000)
+    _expect_local(context, cell.first, utc)
+
+
+@then('the "{elid}" card prints "{field}" on the reader\'s clock, UTC on hover')
+def step_card_local_stamp(context, elid, field):
+    row = context.page.locator("[data-lc-inspector='" + elid + "'] .lc-ins-row").filter(
+        has=context.page.locator("label", has_text=field.replace("_", " ").capitalize())).first
+    expect(row).to_be_visible(timeout=15_000)
+    _expect_local(context, row.locator(".lc-ins-ro").first)

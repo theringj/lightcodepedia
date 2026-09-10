@@ -1,3 +1,4 @@
+import base64
 import json
 import re
 
@@ -22,6 +23,32 @@ def _stub(context):
     def handler(route):
         req = route.request
         url, method = req.url, req.method
+        if url.endswith("/user/emails") and method == "GET":
+            if st.get("emails") is None:
+                route.fulfill(status=404, json={"message": "Not Found"})   # no user:email scope
+            else:
+                route.fulfill(status=200, json=st["emails"])
+            return
+        if url.endswith("/contents/__seat.yml"):
+            if method == "GET":
+                if st.get("seat_text"):
+                    route.fulfill(status=200, json={"content": base64.b64encode(st["seat_text"].encode()).decode(), "encoding": "base64", "sha": "s1"})
+                else:
+                    route.fulfill(status=404, json={"message": "Not Found"})
+                return
+            if method == "PUT":
+                body = json.loads(req.post_data or "{}")
+                st["seat_text"] = base64.b64decode(body.get("content", "")).decode()
+                context.seat_written = st["seat_text"]
+                route.fulfill(status=201, json={"content": {"sha": "s2"}})
+                return
+        if st.get("dead"):
+            # an expired or revoked key: GitHub answers 401 to everything
+            route.fulfill(status=401, json={"message": "Bad credentials"})
+            return
+        if url.endswith("/rate_limit") and method == "GET":
+            route.fulfill(status=200, json={"resources": {"core": {"remaining": 4999, "limit": 5000}}})
+            return
         if url.endswith("/user") and method == "GET":
             # the page reads the scope header cross-origin — it must be exposed,
             # exactly as the real GitHub API exposes it
@@ -30,6 +57,11 @@ def _stub(context):
                                    "Access-Control-Expose-Headers": "X-OAuth-Scopes"})
             return
         if re.search(r"/user/memberships/orgs/", url) and method == "PATCH":
+            if st.get("no_invite"):
+                # GitHub knows no invitation for THIS account (the address
+                # it was sent to is not on it) — David's case, 2026-09-06
+                route.fulfill(status=404, json={"message": "Not Found"})
+                return
             st["vault_ok"] = True          # accepting the invite grants the team read
             route.fulfill(status=200, json={"state": "active"})
             return
@@ -576,3 +608,128 @@ def step_keep_refuses(context):
     t = context.page.evaluate(
         "() => window.lcBench.target(document.body)")
     assert not t.get("repo"), "a page of this session reached last term's bench"
+
+
+@given('GitHub knows the learner\'s verified email "{email}"')
+def step_gh_emails(context, email):
+    context.join_stub["emails"] = [{"email": email, "verified": True, "primary": True}]
+
+
+@given("GitHub will not tell the learner's email")
+def step_gh_no_emails(context):
+    context.join_stub["emails"] = None
+
+
+@then("the seat field is not shown")
+def step_seat_hidden(context):
+    row = context.page.locator(".lc-join [data-seat]")
+    context.page.wait_for_timeout(800)
+    assert not row.is_visible(), "the wizard asked for an email it could have read"
+
+
+@then("the seat field is shown")
+def step_seat_shown(context):
+    expect(context.page.locator(".lc-join [data-seat]")).to_be_visible(timeout=10_000)
+
+
+@when('I type the seat email "{email}" and save it')
+def step_seat_type(context, email):
+    context.page.fill(".lc-join .lcj-seat", email)
+    context.page.click('.lc-join [data-a="seat"]')
+    context.page.wait_for_timeout(1200)
+
+
+@then('the bench carries a seat file naming "{email}" and "{login}"')
+def step_seat_written(context, email, login):
+    for _ in range(40):
+        txt = getattr(context, "seat_written", "") or ""
+        if ('email: "%s"' % email) in txt and ('login: "%s"' % login) in txt and "wizard" in txt:
+            return
+        context.page.wait_for_timeout(250)
+    raise AssertionError("no seat file written into the bench — last: %r" % getattr(context, "seat_written", None))
+
+
+# ── the key's life: the day it was saved, the day it died ──────────────────
+@given("the key no longer works")
+def step_key_dead(context):
+    context.join_stub["dead"] = True
+
+
+@given("GitHub knows no invitation for this account")
+def step_no_invite(context):
+    context.join_stub["no_invite"] = True
+
+
+@given("my face is cached on this device")
+def step_face_cached(context):
+    context.page.add_init_script(
+        "localStorage.setItem('lc_gh_user', JSON.stringify({login:'zamm-student', name:'Zamm', avatar_url:'https://avatars.githubusercontent.com/u/1?v=4'}));"
+        "localStorage.setItem('lc_gh_user_for','ghp_stored');")
+
+
+@given("my key was saved {n:d} days ago")
+def step_key_saved_days_ago(context, n):
+    context.page.add_init_script(
+        "localStorage.setItem('lc_key_since', new Date(Date.now() - %d * 86400000).toISOString());" % n)
+
+
+@then("the day the key was saved is remembered")
+def step_since_remembered(context):
+    since = context.page.evaluate("() => localStorage.getItem('lc_key_since') || ''")
+    assert since[:10] == __import__("datetime").datetime.utcnow().strftime("%Y-%m-%d")[:10] or since, "no lc_key_since"
+    assert since, "lc_key_since not written"
+
+
+@then('join step {n:d} says "{text}"')
+def step_join_says(context, n, text):
+    expect(context.page.locator('.lc-join [data-m="%d"]' % n)).to_contain_text(text, timeout=8000)
+
+
+@then('the account menu key row says "{text}"')
+def step_key_row(context, text):
+    expect(context.page.locator("#lc-ud-key")).to_contain_text(text, timeout=10_000)
+
+
+@given("the learner gets enrolled meanwhile")
+def step_enrolled_meanwhile(context):
+    context.join_stub["vault_ok"] = True
+
+
+@when("the learner comes back to the tab")
+def step_tab_back(context):
+    context.page.evaluate(
+        "() => { Object.defineProperty(document, 'visibilityState', { get: () => 'visible', configurable: true });"
+        " document.dispatchEvent(new Event('visibilitychange')); }")
+    context.page.wait_for_timeout(800)
+
+
+# ── a frame that cannot remember (David, 2026-09-09) ──────────────────────
+@given("a browser that denies this frame its storage")
+def step_storage_denied(context):
+    """Chrome with third-party cookies blocked throws SecurityError on any
+    touch of localStorage inside a cross-site frame; so does incognito and
+    the Canvas mobile webview. Same throw, from the first byte."""
+    context.page.add_init_script(
+        "Object.defineProperty(window, 'localStorage', { configurable: true, get: function () {"
+        "  throw new DOMException('Access is denied for this document.', 'SecurityError'); } });")
+
+
+@then("the wizard warns the key cannot be remembered here, without a door out of Canvas")
+def step_storage_warned(context):
+    warn = context.page.locator(".lc-join .lcj-nomem")
+    expect(warn).to_be_visible()
+    expect(warn).to_contain_text("remember")
+    expect(warn).to_contain_text("third-party cookies")
+    # Canvas is the only door: no link leaves the frame
+    expect(warn.locator("a")).to_have_count(0)
+
+
+@then("join step 2 refuses to call the key saved")
+def step_key_not_saved(context):
+    m = context.page.locator('.lc-join [data-m="2"]')
+    expect(m).to_have_class(re.compile(r"\berr\b"))
+    expect(m).to_contain_text("will not remember")
+    expect(m).to_contain_text("third-party cookies")
+    expect(m).not_to_contain_text("Key saved")
+    expect(m.locator("a")).to_have_count(0)
+    assert "on" in _cls(context, 2), "step 2 must stay open"

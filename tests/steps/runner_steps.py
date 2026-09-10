@@ -257,6 +257,26 @@ def step_dot_rendered(context):
         "the DOT source is still on the page, unrendered"
 
 
+@then('a class diagram is drawn naming "{a}" and "{b}"')
+def step_class_diagram(context, a, b):
+    from playwright.sync_api import expect
+    svg = context.page.locator(".lc-diagram svg").first
+    expect(svg).to_be_visible(timeout=40_000)
+    # the model lands after the first draw — the redraw must carry it
+    expect(svg).to_contain_text(a, timeout=20_000)
+    expect(svg).to_contain_text(b, timeout=20_000)
+    assert context.page.locator("p.diagram, a.diagram").count() == 0, \
+        "the diagram link is still on the page, undrawn"
+
+
+@then("the model's code stays hidden")
+def step_model_hidden(context):
+    shown = context.page.evaluate(
+        """() => [...document.querySelectorAll('.lc-model, pre.model')]
+                 .map(e => getComputedStyle(e).display).filter(d => d !== 'none').length""")
+    assert shown == 0, "%d model block(s) visible" % shown
+
+
 @then("the diagram is no wider than the page")
 def step_diagram_fits(context):
     m = context.page.evaluate(
@@ -643,3 +663,51 @@ def step_says_missing_file(context):
     expect(status).to_contain_text("No such file", timeout=15_000)
     txt = status.inner_text()
     assert "classic" not in txt.lower(), "still blaming the token: %r" % txt[:200]
+
+
+@given('this browser is paired with the session "{hub}"')
+def step_paired_session(context, hub):
+    # a real pairing stamps the bench AND its session together (the wizard's
+    # pairBench); a session stamp with no bench is exactly what gets cleaned up
+    context.page.add_init_script(
+        "localStorage.setItem('lc_ed_repo', 'uwm-build-ai/%s-almjr7');"
+        "localStorage.setItem('lc_ed_session', %r);" % (hub, hub))
+
+
+def _join_href(context):
+    link = context.page.locator(".lc-runner .lc-run-status a[href*='go=bench']")
+    expect(link).to_be_visible(timeout=20_000)
+    return link.get_attribute("href") or ""
+
+
+@then("the runner's join link names no session")
+def step_join_no_hub(context):
+    href = _join_href(context)
+    assert "hub=" not in href, "a guessed session rode the join link: " + href
+
+
+@then('the runner\'s join link names the session "{hub}"')
+def step_join_hub(context, hub):
+    href = _join_href(context)
+    assert "hub=" + hub in href, "expected hub=%s in %s" % (hub, href)
+
+
+@given("a classic key that reads the repo but not this path")
+def step_classic_key_repo_ok(context):
+    """A classic ghp_ key with the repo scope: the repo answers 200, the file
+    404 — the branch that offers the learner the way to their bench."""
+    context.page.add_init_script("localStorage.setItem('lc_ed_pat','ghp_stub');")
+    context.page.route(
+        "https://api.github.com/user",
+        # the page reads the scope header cross-origin, which GitHub exposes;
+        # a stub must say so too or the header is invisible to fetch()
+        lambda r: r.fulfill(status=200, headers={"X-OAuth-Scopes": "repo",
+                                                 "Access-Control-Expose-Headers": "X-OAuth-Scopes"},
+                            json={"login": "almjr7"}))
+    context.page.route(
+        "https://api.github.com/repos/michelzam/lightcodelab/contents/**",
+        lambda r: r.fulfill(status=404, json={"message": "Not Found"}))
+    context.page.route(
+        "https://api.github.com/repos/michelzam/lightcodelab",
+        lambda r: r.fulfill(status=200, json={"full_name": "michelzam/lightcodelab",
+                                              "permissions": {"push": True}}))

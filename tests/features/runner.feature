@@ -94,6 +94,40 @@ Feature: The instant runner (RT) — Phase A parity
     And I wait for the page to be interactive
     Then a rendered diagram replaces the dot source
 
+  Scenario: A hidden model draws its class diagram inside a runner page
+    The 410 concepts page hides eight Python classes in a model block and
+    asks for their class diagram in a folded accordion (Michel,
+    2026-09-04). The model block ran, the link sat there: the diagram
+    engine walked the static page once at load, and a runner render — the
+    road every course page takes to Canvas — arrives after. The engine is
+    an upgrader now: a diagram draws whenever it appears, and it redraws
+    once the model lands.
+
+    Given the GitHub contents API serves "courses/demo/mod/shape.md" with the document:
+      """
+      # Shape
+
+      ```python
+      @component(icon="👤")
+      class Customer(Object):
+          CustomerID = Attr(int)
+          City = Attr(str)
+
+      @component(icon="🧾")
+      class Order(Object):
+          OrderID = Attr(int)
+          CustomerID = Attr("Customer")
+      ```
+      {: .model #shop }
+
+      [the shop, as classes](#)
+      {: .diagram scope="Order" states="false" }
+      """
+    When I navigate to "/run.html#src=gh:acme/demo/courses/demo/mod/shape.md"
+    And I wait for the page to be interactive
+    Then a class diagram is drawn naming "Customer" and "Order"
+    And the model's code stays hidden
+
   Scenario: A dot diagram fits the page instead of scrolling it
     A concept map wider than the page used to arrive at natural size and
     make the reader scroll sideways before reading anything. Fences fit by
@@ -179,6 +213,25 @@ Feature: The instant runner (RT) — Phase A parity
     When I navigate to "/run.html#src=gh:michelzam/lightcodelab/courses/nope/index.md"
     And I wait for the page to be interactive
     Then the runner says the file is missing, not the key
+
+  Scenario: The join link carries no session when this browser is not paired
+    A learner reading the VAULT with no bench yet is offered "Open my course".
+    The link used to guess the session from the repo name — the vault, minus
+    "-vault" — and sent Alonzo to a session called "uwm-build-ai", the org
+    (2026-09-04). Unpaired, the link names nothing: the wizard then lists
+    every session the key can see.
+
+    Given a classic key that reads the repo but not this path
+    When I navigate to "/run.html#src=gh:michelzam/lightcodelab/courses/demo/index.md"
+    And I wait for the page to be interactive
+    Then the runner's join link names no session
+
+  Scenario: The join link names the session this browser is paired with
+    Given a classic key that reads the repo but not this path
+    And this browser is paired with the session "build-ai-fall26"
+    When I navigate to "/run.html#src=gh:michelzam/lightcodelab/courses/demo/index.md"
+    And I wait for the page to be interactive
+    Then the runner's join link names the session "build-ai-fall26"
 
   Scenario: A card click lands at the top of the next page
     Inside the runner a link only changes the hash and the document is

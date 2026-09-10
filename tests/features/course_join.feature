@@ -285,3 +285,125 @@ Feature: The learner course wizard (/courses/join)
     And my bench exists and is 0 updates behind the hub
     When I open the course wizard with a stored key
     Then no repository was created by the wizard
+
+  Scenario: The seat is read from the key and written into the bench — nothing typed
+    Nobody types a login: the key already says who they are (Michel,
+    2026-09-04). With user:email on the key, the wizard reads the learner's
+    verified address too, and once the bench is found it writes email ↔
+    login into the bench as __seat.yml — the teacher's desk reads it back
+    after any reload. The learner saw one extra scope in a link, and no field.
+
+    Given a stubbed GitHub that accepts the key with repo scope
+    And the learner can read the vault
+    And GitHub knows the learner's verified email "zamm-student@uwm.edu"
+    And my bench exists and is 0 updates behind the hub
+    When I open the course wizard
+    And I confirm I have an account
+    And I paste the course key "ghp_valid" and check it
+    Then the wizard says the learner is in
+    And the seat field is not shown
+    And the bench carries a seat file naming "zamm-student@uwm.edu" and "zamm-student"
+
+  Scenario: Without the email scope the wizard asks once, then writes the seat
+    A key made before the scope existed cannot tell the address, so step 3
+    shows one field, the address the invitation came to, exactly once.
+
+    Given a stubbed GitHub that accepts the key with repo scope
+    And the learner can read the vault
+    And GitHub will not tell the learner's email
+    And my bench exists and is 0 updates behind the hub
+    When I open the course wizard
+    And I confirm I have an account
+    And I paste the course key "ghp_valid" and check it
+    Then the wizard says the learner is in
+    And the seat field is shown
+    When I type the seat email "zamm-student@uwm.edu" and save it
+    Then the bench carries a seat file naming "zamm-student@uwm.edu" and "zamm-student"
+
+  Scenario: A saved key remembers its day and points to its expiry
+    A page cannot read a token's expiry from GitHub (the header is not
+    CORS-exposed), so the wizard keeps the one fact it has, the day, while
+    pointing at the place the expiry can be seen (Michel, 2026-09-07).
+
+    Given a stubbed GitHub that accepts the key with repo scope
+    And GitHub knows the learner's verified email "zamm@uwm.edu"
+    When I open the course wizard
+    And I confirm I have an account
+    And I paste the course key "ghp_newkey" and check it
+    Then join step 2 says "Key saved — @zamm-student, on"
+    And join step 2 says "check its expiry on GitHub"
+    And the day the key was saved is remembered
+
+  Scenario: An account without the class address is warned on day one
+    David (2026-09-06) made his GitHub account on another address; the
+    invitation went to his class one; nothing said so until step 3 looped.
+    The page declares the domain, the message names only what it was told.
+
+    Given a stubbed GitHub that accepts the key with repo scope
+    And GitHub knows the learner's verified email "somebody@gmail.com"
+    When I open the course wizard
+    And I confirm I have an account
+    And I paste the course key "ghp_newkey" and check it
+    Then join step 2 says "no verified address at @uwm.edu"
+    And join step 2 says "signed in as @zamm-student"
+
+  Scenario: A refused acceptance names the account and the address
+    "Couldn't accept from here" sent David around in circles for three
+    days. GitHub finds no invitation for THIS account: say so, name the
+    account, send to the email's green button first.
+
+    Given a stubbed GitHub that accepts the key with repo scope
+    And GitHub knows no invitation for this account
+    And my face is cached on this device
+    When I open the course wizard with a stored key
+    And I accept my invitation in the wizard
+    Then join step 3 says "no invitation for @zamm-student"
+    And join step 3 says "press Join while signed in as @zamm-student"
+
+  Scenario: An aging key is flagged in yellow, in the wizard and the menu
+    Given a stubbed GitHub that accepts the key with repo scope
+    And the learner can read the vault
+    And my face is cached on this device
+    And my key was saved 27 days ago
+    When I open the course wizard with a stored key
+    Then join step 2 says "Key saved 27 days ago"
+    And join step 2 says "30-day default"
+    And the account menu key row says "Key saved 27 days ago"
+
+  Scenario: A key that stopped working is named in red, with the way out
+    Given a stubbed GitHub that accepts the key with repo scope
+    And the key no longer works
+    And my face is cached on this device
+    When I open the course wizard with a stored key
+    Then join step 3 says "Your key no longer works"
+    And join step 3 says "renew in Setup"
+    And the account menu key row says "Your key no longer works"
+
+  Scenario: The wizard catches up when the learner comes back
+    David accepted elsewhere and never refreshed the Canvas page (his
+    video, 2026-09-07). The page re-checks by itself when the tab comes
+    back into view.
+
+    Given a stubbed GitHub that accepts the key with repo scope
+    When I open the course wizard with a stored key
+    And I check my access
+    Then the wizard guides to the invitation, not an error dump
+    Given the learner gets enrolled meanwhile
+    When the learner comes back to the tab
+    Then the wizard says the learner is in
+
+  Scenario: A frame that cannot remember says so before any key is typed
+    David (2026-09-09): Canvas framed the wizard, Chrome denied the frame its
+    storage, every save died in a silent catch and "Key saved" was a lie.
+    Each reload asked for a new key; three days of keys in a notepad. The
+    wizard probes its memory first and warns on top; a key it could not keep
+    is never reported as saved. Canvas is the only door (Michel, same day):
+    the remedy is the browser's cookie setting, never the page's own tab.
+
+    Given a browser that denies this frame its storage
+    And a stubbed GitHub that accepts the key with repo scope
+    When I open the course wizard
+    Then the wizard warns the key cannot be remembered here, without a door out of Canvas
+    When I confirm I have an account
+    And I paste the course key "ghp_newkey" and check it
+    Then join step 2 refuses to call the key saved
